@@ -16,6 +16,7 @@
 package com.nostra13.universalimageloader.core;
 
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.Handler;
 import com.nostra13.universalimageloader.cache.disc.DiscCacheAware;
 import com.nostra13.universalimageloader.core.assist.FailReason;
@@ -218,7 +219,7 @@ final class LoadAndDisplayImageTask implements Runnable, IoUtils.CopyListener {
 	}
 
 	private Bitmap tryLoadBitmap() throws TaskCancelledException {
-		File imageFile = getImageFileInDiscCache();
+        File imageFile = getImageFileInDiscCache();
 
 		Bitmap bitmap = null;
 		try {
@@ -288,11 +289,23 @@ final class LoadAndDisplayImageTask implements Runnable, IoUtils.CopyListener {
 	/** @return <b>true</b> - if image was downloaded successfully; <b>false</b> - otherwise */
 	private boolean tryCacheImageOnDisc(File targetFile) throws TaskCancelledException {
 		log(LOG_CACHE_IMAGE_ON_DISC);
-
 		boolean loaded = false;
 		try {
-			loaded = downloadImage(targetFile);
-			if (loaded) {
+
+            File sourceFile = null;
+
+            boolean isSourceLocal = Scheme.FILE == Scheme.ofUri(uri);
+
+            // if uri is file skip the download, replace targetFile
+            if (isSourceLocal){
+                Uri u = Uri.parse(uri);
+                sourceFile = new File(u.getPath());
+                loaded = true;
+            } else {
+                loaded = downloadImage(targetFile);
+            }
+
+            if (loaded) {
 
                 int width;
                 int height;
@@ -304,10 +317,16 @@ final class LoadAndDisplayImageTask implements Runnable, IoUtils.CopyListener {
                     height = targetSize.getHeight();
                 }
 
-				if (width > 0 || height > 0) {
-					log(LOG_RESIZE_CACHED_IMAGE_FILE);
-					loaded = resizeAndSaveImage(targetFile, width, height); // TODO : process boolean result
-				}
+				// if (width > 0 || height > 0) {
+                log(LOG_RESIZE_CACHED_IMAGE_FILE);
+
+                if (isSourceLocal){
+                    loaded = resizeAndSaveImage(sourceFile, targetFile, width, height);
+                } else {
+                    loaded = resizeAndSaveImage(targetFile, width, height); // TODO : process boolean result
+                }
+
+				// }
 
 				configuration.discCache.put(memoryCacheKey, targetFile);
 			}
@@ -337,34 +356,39 @@ final class LoadAndDisplayImageTask implements Runnable, IoUtils.CopyListener {
 	}
 
 	/** Decodes image file into Bitmap, resize it and save it back */
-	private boolean resizeAndSaveImage(File targetFile, int maxWidth, int maxHeight) throws IOException {
-		boolean saved = false;
-		// Decode image file, compress and re-save it
-		ImageSize targetImageSize = new ImageSize(maxWidth, maxHeight);
-		DisplayImageOptions specialOptions = new DisplayImageOptions.Builder().cloneFrom(options)
-				.imageScaleType(ImageScaleType.IN_SAMPLE_INT).build();
-		ImageDecodingInfo decodingInfo = new ImageDecodingInfo(memoryCacheKey,
-				Scheme.FILE.wrap(targetFile.getAbsolutePath()), targetImageSize, ViewScaleType.FIT_INSIDE,
-				getDownloader(), specialOptions);
-		Bitmap bmp = decoder.decode(decodingInfo);
-		if (bmp != null && configuration.processorForDiscCache != null) {
-			log(LOG_PROCESS_IMAGE_BEFORE_CACHE_ON_DISC);
-			bmp = configuration.processorForDiscCache.process(bmp);
-			if (bmp == null) {
-				L.e(ERROR_PROCESSOR_FOR_DISC_CACHE_NULL, memoryCacheKey);
-			}
-		}
-		if (bmp != null) {
-			OutputStream os = new BufferedOutputStream(new FileOutputStream(targetFile), BUFFER_SIZE);
-			try {
-				bmp.compress(configuration.imageCompressFormatForDiscCache, configuration.imageQualityForDiscCache, os);
-			} finally {
-				IoUtils.closeSilently(os);
-			}
-			bmp.recycle();
-		}
-		return true;
-	}
+    private boolean resizeAndSaveImage(File targetFile, int maxWidth, int maxHeight) throws IOException {
+        return resizeAndSaveImage(targetFile, targetFile, maxWidth, maxHeight);
+    }
+
+    /** Decodes image file into Bitmap, resize it and save it back */
+    private boolean resizeAndSaveImage(File sourceFile, File targetFile, int maxWidth, int maxHeight) throws IOException {
+        boolean saved = false;
+        // Decode image file, compress and re-save it
+        ImageSize targetImageSize = new ImageSize(maxWidth, maxHeight);
+        DisplayImageOptions specialOptions = new DisplayImageOptions.Builder().cloneFrom(options)
+                .imageScaleType(ImageScaleType.IN_SAMPLE_INT).build();
+        ImageDecodingInfo decodingInfo = new ImageDecodingInfo(memoryCacheKey,
+                Scheme.FILE.wrap(sourceFile.getAbsolutePath()), targetImageSize, ViewScaleType.FIT_INSIDE,
+                getDownloader(), specialOptions);
+        Bitmap bmp = decoder.decode(decodingInfo);
+        if (bmp != null && configuration.processorForDiscCache != null) {
+            log(LOG_PROCESS_IMAGE_BEFORE_CACHE_ON_DISC);
+            bmp = configuration.processorForDiscCache.process(bmp);
+            if (bmp == null) {
+                L.e(ERROR_PROCESSOR_FOR_DISC_CACHE_NULL, memoryCacheKey);
+            }
+        }
+        if (bmp != null) {
+            OutputStream os = new BufferedOutputStream(new FileOutputStream(targetFile), BUFFER_SIZE);
+            try {
+                bmp.compress(configuration.imageCompressFormatForDiscCache, configuration.imageQualityForDiscCache, os);
+            } finally {
+                IoUtils.closeSilently(os);
+            }
+            bmp.recycle();
+        }
+        return true;
+    }
 
 	@Override
 	public boolean onBytesCopied(int current, int total) {

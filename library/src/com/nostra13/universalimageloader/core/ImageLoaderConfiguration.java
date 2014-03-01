@@ -179,8 +179,8 @@ public final class ImageLoaderConfiguration {
 		private int maxImageHeightForMemoryCache = 0;
 		private int maxImageWidthForDiscCache = 0;
 		private int maxImageHeightForDiscCache = 0;
-		private CompressFormat imageCompressFormatForDiscCache = null;
-		private int imageQualityForDiscCache = 0;
+		private CompressFormat imageCompressFormatForDiscCache = CompressFormat.JPEG;
+		private int imageQualityForDiscCache = 80;
 		private BitmapProcessor processorForDiscCache = null;
 
 		private Executor taskExecutor = null;

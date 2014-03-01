@@ -266,10 +266,10 @@ final class LoadAndDisplayImageTask implements Runnable, IoUtils.CopyListener {
 
 	private File getImageFileInDiscCache() {
 		DiscCacheAware discCache = configuration.discCache;
-		File imageFile = discCache.get(uri);
+		File imageFile = discCache.get(memoryCacheKey);
 		File cacheDir = imageFile.getParentFile();
 		if (cacheDir == null || (!cacheDir.exists() && !cacheDir.mkdirs())) {
-			imageFile = configuration.reserveDiscCache.get(uri);
+			imageFile = configuration.reserveDiscCache.get(memoryCacheKey);
 			cacheDir = imageFile.getParentFile();
 			if (cacheDir != null && !cacheDir.exists()) {
 				cacheDir.mkdirs();
@@ -293,14 +293,23 @@ final class LoadAndDisplayImageTask implements Runnable, IoUtils.CopyListener {
 		try {
 			loaded = downloadImage(targetFile);
 			if (loaded) {
-				int width = configuration.maxImageWidthForDiscCache;
-				int height = configuration.maxImageHeightForDiscCache;
+
+                int width;
+                int height;
+                if (configuration.maxImageWidthForDiscCache > 0 && configuration.maxImageHeightForDiscCache > 0){
+                    width = configuration.maxImageWidthForDiscCache;
+                    height = configuration.maxImageHeightForDiscCache;
+                } else {
+                    width = targetSize.getWidth();
+                    height = targetSize.getHeight();
+                }
+
 				if (width > 0 || height > 0) {
 					log(LOG_RESIZE_CACHED_IMAGE_FILE);
 					loaded = resizeAndSaveImage(targetFile, width, height); // TODO : process boolean result
 				}
 
-				configuration.discCache.put(uri, targetFile);
+				configuration.discCache.put(memoryCacheKey, targetFile);
 			}
 		} catch (IOException e) {
 			L.e(e);
@@ -485,6 +494,10 @@ final class LoadAndDisplayImageTask implements Runnable, IoUtils.CopyListener {
 	String getLoadingUri() {
 		return uri;
 	}
+
+    String getLoadingMemoryCacheKey(){
+        return memoryCacheKey;
+    }
 
 	private void log(String message) {
 		if (writeLogs) L.d(message, memoryCacheKey);

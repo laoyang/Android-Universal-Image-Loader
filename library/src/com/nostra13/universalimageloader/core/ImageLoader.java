@@ -126,6 +126,10 @@ public class ImageLoader {
 		displayImage(uri, imageAware, null, null, null);
 	}
 
+    public void displayImage(String uri, ImageSize targetImageSize, ImageAware imageAware){
+        displayImage(uri, targetImageSize, imageAware, null, null, null);
+    }
+
 	/**
 	 * Adds display image task to execution pool. Image will be set to ImageAware when it's turn.<br />
 	 * Default {@linkplain DisplayImageOptions display image options} from {@linkplain ImageLoaderConfiguration
@@ -144,6 +148,10 @@ public class ImageLoader {
 		displayImage(uri, imageAware, null, listener, null);
 	}
 
+    public void displayImage(String uri, ImageSize targetImageSize, ImageAware imageAware, ImageLoadingListener listener) {
+        displayImage(uri, targetImageSize, imageAware, null, listener, null);
+    }
+
 	/**
 	 * Adds display image task to execution pool. Image will be set to ImageAware when it's turn.<br />
 	 * <b>NOTE:</b> {@link #init(ImageLoaderConfiguration)} method must be called before this method call
@@ -161,6 +169,10 @@ public class ImageLoader {
 	public void displayImage(String uri, ImageAware imageAware, DisplayImageOptions options) {
 		displayImage(uri, imageAware, options, null, null);
 	}
+
+    public void displayImage(String uri, ImageSize targetImageSize, ImageAware imageAware, DisplayImageOptions options) {
+        displayImage(uri, targetImageSize, imageAware, options, null, null);
+    }
 
 	/**
 	 * Adds display image task to execution pool. Image will be set to ImageAware when it's turn.<br />
@@ -182,6 +194,81 @@ public class ImageLoader {
 							 ImageLoadingListener listener) {
 		displayImage(uri, imageAware, options, listener, null);
 	}
+
+    public void displayImage(String uri, ImageSize targetImageSize, ImageAware imageAware, DisplayImageOptions options,
+                             ImageLoadingListener listener, ImageLoadingProgressListener progressListener){
+
+        checkConfiguration();
+        if (imageAware == null) {
+            throw new IllegalArgumentException(ERROR_WRONG_ARGUMENTS);
+        }
+        if (listener == null) {
+            listener = emptyListener;
+        }
+        if (options == null) {
+            options = configuration.defaultDisplayImageOptions;
+        }
+
+        if (TextUtils.isEmpty(uri)) {
+            engine.cancelDisplayTaskFor(imageAware);
+            listener.onLoadingStarted(uri, imageAware.getWrappedView());
+            if (options.shouldShowImageForEmptyUri()) {
+                imageAware.setImageDrawable(options.getImageForEmptyUri(configuration.resources));
+            } else {
+                imageAware.setImageDrawable(null);
+            }
+            listener.onLoadingComplete(uri, imageAware.getWrappedView(), null);
+            return;
+        }
+
+        ImageSize targetSize;
+        if (targetImageSize == null){
+            targetSize = ImageSizeUtils.defineTargetSizeForView(imageAware, configuration.getMaxImageSize());
+        } else {
+            targetSize = targetImageSize;
+        }
+
+        String memoryCacheKey = MemoryCacheUtils.generateKey(uri, targetSize);
+        engine.prepareDisplayTaskFor(imageAware, memoryCacheKey);
+
+        listener.onLoadingStarted(uri, imageAware.getWrappedView());
+
+        Bitmap bmp = configuration.memoryCache.get(memoryCacheKey);
+        if (bmp != null && !bmp.isRecycled()) {
+            if (configuration.writeLogs) L.d(LOG_LOAD_IMAGE_FROM_MEMORY_CACHE, memoryCacheKey);
+
+            if (options.shouldPostProcess()) {
+                ImageLoadingInfo imageLoadingInfo = new ImageLoadingInfo(uri, imageAware, targetSize, memoryCacheKey,
+                        options, listener, progressListener, engine.getLockForUri(uri));
+                ProcessAndDisplayImageTask displayTask = new ProcessAndDisplayImageTask(engine, bmp, imageLoadingInfo,
+                        defineHandler(options));
+                if (options.isSyncLoading()) {
+                    displayTask.run();
+                } else {
+                    engine.submit(displayTask);
+                }
+            } else {
+                options.getDisplayer().display(bmp, imageAware, LoadedFrom.MEMORY_CACHE);
+                listener.onLoadingComplete(uri, imageAware.getWrappedView(), bmp);
+            }
+        } else {
+            if (options.shouldShowImageOnLoading()) {
+                imageAware.setImageDrawable(options.getImageOnLoading(configuration.resources));
+            } else if (options.isResetViewBeforeLoading()) {
+                imageAware.setImageDrawable(null);
+            }
+
+            ImageLoadingInfo imageLoadingInfo = new ImageLoadingInfo(uri, imageAware, targetSize, memoryCacheKey,
+                    options, listener, progressListener, engine.getLockForUri(uri));
+            LoadAndDisplayImageTask displayTask = new LoadAndDisplayImageTask(engine, imageLoadingInfo,
+                    defineHandler(options));
+            if (options.isSyncLoading()) {
+                displayTask.run();
+            } else {
+                engine.submit(displayTask);
+            }
+        }
+    }
 
 	/**
 	 * Adds display image task to execution pool. Image will be set to ImageAware when it's turn.<br />
@@ -206,70 +293,7 @@ public class ImageLoader {
 	 */
 	public void displayImage(String uri, ImageAware imageAware, DisplayImageOptions options,
 							 ImageLoadingListener listener, ImageLoadingProgressListener progressListener) {
-		checkConfiguration();
-		if (imageAware == null) {
-			throw new IllegalArgumentException(ERROR_WRONG_ARGUMENTS);
-		}
-		if (listener == null) {
-			listener = emptyListener;
-		}
-		if (options == null) {
-			options = configuration.defaultDisplayImageOptions;
-		}
-
-		if (TextUtils.isEmpty(uri)) {
-			engine.cancelDisplayTaskFor(imageAware);
-			listener.onLoadingStarted(uri, imageAware.getWrappedView());
-			if (options.shouldShowImageForEmptyUri()) {
-				imageAware.setImageDrawable(options.getImageForEmptyUri(configuration.resources));
-			} else {
-				imageAware.setImageDrawable(null);
-			}
-			listener.onLoadingComplete(uri, imageAware.getWrappedView(), null);
-			return;
-		}
-
-		ImageSize targetSize = ImageSizeUtils.defineTargetSizeForView(imageAware, configuration.getMaxImageSize());
-		String memoryCacheKey = MemoryCacheUtils.generateKey(uri, targetSize);
-		engine.prepareDisplayTaskFor(imageAware, memoryCacheKey);
-
-		listener.onLoadingStarted(uri, imageAware.getWrappedView());
-
-		Bitmap bmp = configuration.memoryCache.get(memoryCacheKey);
-		if (bmp != null && !bmp.isRecycled()) {
-			if (configuration.writeLogs) L.d(LOG_LOAD_IMAGE_FROM_MEMORY_CACHE, memoryCacheKey);
-
-			if (options.shouldPostProcess()) {
-				ImageLoadingInfo imageLoadingInfo = new ImageLoadingInfo(uri, imageAware, targetSize, memoryCacheKey,
-						options, listener, progressListener, engine.getLockForUri(uri));
-				ProcessAndDisplayImageTask displayTask = new ProcessAndDisplayImageTask(engine, bmp, imageLoadingInfo,
-						defineHandler(options));
-				if (options.isSyncLoading()) {
-					displayTask.run();
-				} else {
-					engine.submit(displayTask);
-				}
-			} else {
-				options.getDisplayer().display(bmp, imageAware, LoadedFrom.MEMORY_CACHE);
-				listener.onLoadingComplete(uri, imageAware.getWrappedView(), bmp);
-			}
-		} else {
-			if (options.shouldShowImageOnLoading()) {
-				imageAware.setImageDrawable(options.getImageOnLoading(configuration.resources));
-			} else if (options.isResetViewBeforeLoading()) {
-				imageAware.setImageDrawable(null);
-			}
-
-			ImageLoadingInfo imageLoadingInfo = new ImageLoadingInfo(uri, imageAware, targetSize, memoryCacheKey,
-					options, listener, progressListener, engine.getLockForUri(uri));
-			LoadAndDisplayImageTask displayTask = new LoadAndDisplayImageTask(engine, imageLoadingInfo,
-					defineHandler(options));
-			if (options.isSyncLoading()) {
-				displayTask.run();
-			} else {
-				engine.submit(displayTask);
-			}
-		}
+        displayImage(uri, null, imageAware, options, listener, progressListener);
 	}
 
 	/**
@@ -286,6 +310,10 @@ public class ImageLoader {
 	public void displayImage(String uri, ImageView imageView) {
 		displayImage(uri, new ImageViewAware(imageView), null, null, null);
 	}
+
+    public void displayImage(String uri, ImageSize imageSize, ImageView imageView) {
+        displayImage(uri, imageSize, new ImageViewAware(imageView), null, null, null);
+    }
 
 	/**
 	 * Adds display image task to execution pool. Image will be set to ImageView when it's turn.<br />
@@ -304,6 +332,10 @@ public class ImageLoader {
 		displayImage(uri, new ImageViewAware(imageView), options, null, null);
 	}
 
+    public void displayImage(String uri, ImageSize imageSize, ImageView imageView, DisplayImageOptions options) {
+        displayImage(uri, imageSize, new ImageViewAware(imageView), options, null, null);
+    }
+
 	/**
 	 * Adds display image task to execution pool. Image will be set to ImageView when it's turn.<br />
 	 * Default {@linkplain DisplayImageOptions display image options} from {@linkplain ImageLoaderConfiguration
@@ -320,6 +352,10 @@ public class ImageLoader {
 	public void displayImage(String uri, ImageView imageView, ImageLoadingListener listener) {
 		displayImage(uri, new ImageViewAware(imageView), null, listener, null);
 	}
+
+    public void displayImage(String uri, ImageSize imageSize, ImageView imageView, ImageLoadingListener listener) {
+        displayImage(uri, imageSize, new ImageViewAware(imageView), null, listener, null);
+    }
 
 	/**
 	 * Adds display image task to execution pool. Image will be set to ImageView when it's turn.<br />
@@ -340,6 +376,11 @@ public class ImageLoader {
 							 ImageLoadingListener listener) {
 		displayImage(uri, imageView, options, listener, null);
 	}
+
+    public void displayImage(String uri, ImageSize imageSize, ImageView imageView, DisplayImageOptions options,
+                             ImageLoadingListener listener) {
+        displayImage(uri, imageSize, imageView, options, listener, null);
+    }
 
 	/**
 	 * Adds display image task to execution pool. Image will be set to ImageView when it's turn.<br />
@@ -365,6 +406,11 @@ public class ImageLoader {
 							 ImageLoadingListener listener, ImageLoadingProgressListener progressListener) {
 		displayImage(uri, new ImageViewAware(imageView), options, listener, progressListener);
 	}
+
+    public void displayImage(String uri, ImageSize imageSize, ImageView imageView, DisplayImageOptions options,
+                             ImageLoadingListener listener, ImageLoadingProgressListener progressListener) {
+        displayImage(uri, imageSize, new ImageViewAware(imageView), options, listener, progressListener);
+    }
 
 	/**
 	 * Adds load image task to execution pool. Image will be returned with

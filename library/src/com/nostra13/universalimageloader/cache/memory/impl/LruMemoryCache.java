@@ -22,7 +22,7 @@ public class LruMemoryCache implements MemoryCacheAware<String, Bitmap> {
 
 	private final LinkedHashMap<String, Bitmap> map;
 
-	private final int maxSize;
+	private int maxSize;
 	/** Size of this cache in bytes */
 	private int size;
 
@@ -34,6 +34,14 @@ public class LruMemoryCache implements MemoryCacheAware<String, Bitmap> {
 		this.maxSize = maxSize;
 		this.map = new LinkedHashMap<String, Bitmap>(0, 0.75f, true);
 	}
+
+    public void setMaxSize(int maxSize) {
+        synchronized (this) {
+            this.maxSize = maxSize;
+        }
+
+        trimToSize(maxSize);
+    }
 
 	/**
 	 * Returns the Bitmap for {@code key} if it exists in the cache. If a Bitmap was returned, it is moved to the head

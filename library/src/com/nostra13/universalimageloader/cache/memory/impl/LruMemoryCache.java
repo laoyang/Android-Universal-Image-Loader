@@ -43,7 +43,11 @@ public class LruMemoryCache implements MemoryCacheAware<String, Bitmap> {
         trimToSize(maxSize);
     }
 
-	/**
+    public int getMaxSize() {
+        return maxSize;
+    }
+
+    /**
 	 * Returns the Bitmap for {@code key} if it exists in the cache. If a Bitmap was returned, it is moved to the head
 	 * of the queue. This returns null if a Bitmap is not cached.
 	 */
@@ -82,7 +86,7 @@ public class LruMemoryCache implements MemoryCacheAware<String, Bitmap> {
 	 *
 	 * @param maxSize the maximum size of the cache before returning. May be -1 to evict even 0-sized elements.
 	 */
-	private void trimToSize(int maxSize) {
+	public void trimToSize(int maxSize) {
 		while (true) {
 			String key;
 			Bitmap value;
